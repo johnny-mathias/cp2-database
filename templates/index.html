@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block content %}
+<header class="hero">
+    <div class="hero-copy">
+        <p class="eyebrow">SOC Emergency Console</p>
+        <h1>Global Cyber Summit</h1>
+        <p class="subtitle">
+            Painel de contenção para registros fraudulentos em tempo real. A ação principal
+            executa exatamente o bloco de <code>CyberSummit.sql</code> e a visualização usa
+            as consultas previstas no seu arquivo <code>teste.sql</code>.
+        </p>
+    </div>
+
+    <form class="hero-card" method="post" action="{{ url_for('scan') }}">
+        <h2>Operação ativa</h2>
+        <p>Varre inscrições com status <code>PENDING</code>, cancela perfis suspeitos e protege as vagas do evento.</p>
+        <button type="submit">Executar varredura antifraude</button>
+    </form>
+</header>
+
+<section class="stats-grid">
+    <article class="stat-card">
+        <span>Participantes</span>
+        <strong>{{ stats.total_participants }}</strong>
+    </article>
+    <article class="stat-card">
+        <span>Inscrições pendentes</span>
+        <strong>{{ stats.total_pending }}</strong>
+    </article>
+    <article class="stat-card">
+        <span>Canceladas</span>
+        <strong>{{ stats.cancelled_count }}</strong>
+    </article>
+    <article class="stat-card">
+        <span>Eventos auditados</span>
+        <strong>{{ stats.audit_count }}</strong>
+    </article>
+</section>
+
+{% if load_error %}
+<section class="panel">
+    <div class="panel-title">
+        <h2>Falha de leitura</h2>
+        <p>{{ load_error }}</p>
+    </div>
+</section>
+{% endif %}
+
+<main class="dashboard-grid">
+    <section class="panel">
+        <div class="panel-title">
+            <h2>Fila PENDING</h2>
+            <p>Alvos elegíveis para a varredura em tempo real.</p>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Email</th>
+                        <th>Trust</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in pending %}
+                    <tr>
+                        <td>{{ item.nome }}</td>
+                        <td>{{ item.email }}</td>
+                        <td>{{ item.trust_score }}</td>
+                        <td><span class="badge {{ item.status|lower }}">{{ item.status }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4">Nenhuma inscrição pendente.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-title">
+            <h2>Auditoria recente</h2>
+            <p>Motivos persistidos após cancelamento automatizado.</p>
+        </div>
+        <div class="log-list">
+            {% for item in audit_logs %}
+            <article class="log-card">
+                <div class="log-header">
+                    <strong>Inscrição #{{ item.inscricao_id }}</strong>
+                    <span>{{ item.data_evento }}</span>
+                </div>
+                <p>{{ item.motivo }}</p>
+            </article>
+            {% else %}
+            <article class="log-card empty">
+                <p>Nenhum registro em LOG_AUDITORIA até o momento.</p>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="panel wide">
+        <div class="panel-title">
+            <h2>Panorama das inscrições</h2>
+            <p>Visão consolidada dos participantes antes e depois da contenção.</p>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Trust</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in participants %}
+                    <tr>
+                        <td>{{ item.nome }}</td>
+                        <td>{{ item.email }}</td>
+                        <td>
+                            <span class="badge {{ item.status|lower }}">{{ item.status }}</span>
+                        </td>
+                        <td>{{ item.trust_score }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4">Nenhuma inscrição encontrada.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+{% endblock %}
