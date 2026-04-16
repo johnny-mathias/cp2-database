@@ -9,11 +9,14 @@ app = Flask(__name__, template_folder=TEMPLATES_DIR)
 
 
 def get_conn():
-    return oracledb.connect(
+    print("[DEBUG] Abrindo conexao Oracle...")
+    conn = oracledb.connect(
         user=os.environ["DB_USER"],
         password=os.environ["DB_PASSWORD"],
         dsn=os.environ["DB_DSN"],
     )
+    print("[DEBUG] Conexao Oracle aberta com sucesso.")
+    return conn
 
 
 def fetch_dashboard_data():
@@ -31,6 +34,7 @@ def fetch_dashboard_data():
         """
     )
     stats_row = cur.fetchone()
+    print(f"[DEBUG] stats_row: {stats_row}")
     stats = {
         "total": stats_row[0] or 0,
         "pendentes": stats_row[1] or 0,
@@ -55,6 +59,11 @@ def fetch_dashboard_data():
         """
     )
     inscricoes = cur.fetchall()
+    print(f"[DEBUG] Total de inscricoes carregadas: {len(inscricoes)}")
+    if inscricoes:
+        print(f"[DEBUG] Primeira inscricao: {inscricoes[0]}")
+    else:
+        print("[DEBUG] Nenhuma inscricao retornada pela query.")
 
     cur.execute(
         """
@@ -64,7 +73,13 @@ def fetch_dashboard_data():
         """
     )
     logs = cur.fetchall()
+    print(f"[DEBUG] Total de logs carregados: {len(logs)}")
+    if logs:
+        print(f"[DEBUG] Primeiro log: {logs[0]}")
+    else:
+        print("[DEBUG] Nenhum log retornado pela query.")
 
+    cur.close()
     conn.close()
     return stats, inscricoes, logs
 
@@ -73,7 +88,12 @@ def fetch_dashboard_data():
 def index():
     status_message = request.args.get("status_message", "")
     status_type = request.args.get("status_type", "")
+    print("[DEBUG] Rota '/' acionada.")
     stats, inscricoes, logs = fetch_dashboard_data()
+    print(
+        "[DEBUG] Renderizando template com "
+        f"{len(inscricoes)} inscricoes e {len(logs)} logs."
+    )
 
     return render_template(
         "index.html",
@@ -89,6 +109,7 @@ def index():
 def processar():
     conn = get_conn()
     cur = conn.cursor()
+    print("[DEBUG] Rota '/processar' acionada.")
 
     cancelled_var = cur.var(oracledb.NUMBER)
     penalized_var = cur.var(oracledb.NUMBER)
@@ -165,6 +186,12 @@ def processar():
             logs=logs_var,
         )
         conn.commit()
+        print(
+            "[DEBUG] Varredura concluida com "
+            f"{int(cancelled_var.getvalue())} cancelamentos, "
+            f"{int(penalized_var.getvalue())} penalizacoes e "
+            f"{int(logs_var.getvalue())} logs."
+        )
 
         message = (
             f"Varredura concluida: {int(cancelled_var.getvalue())} inscricoes canceladas, "
@@ -175,6 +202,7 @@ def processar():
     except oracledb.DatabaseError as exc:
         conn.rollback()
         error, = exc.args
+        print(f"[DEBUG] Erro Oracle em /processar: {error.code} - {error.message}")
         message = f"Erro Oracle {error.code}: {error.message}"
         status_type = "error"
     finally:
@@ -188,6 +216,7 @@ def processar():
 def resetar():
     conn = get_conn()
     cur = conn.cursor()
+    print("[DEBUG] Rota '/resetar' acionada.")
 
     try:
         cur.execute(
@@ -207,11 +236,13 @@ def resetar():
             """
         )
         conn.commit()
+        print("[DEBUG] Reset da demonstracao executado com sucesso.")
         message = "Base restaurada para um estado simples de demonstracao."
         status_type = "success"
     except oracledb.DatabaseError as exc:
         conn.rollback()
         error, = exc.args
+        print(f"[DEBUG] Erro Oracle em /resetar: {error.code} - {error.message}")
         message = f"Erro Oracle {error.code}: {error.message}"
         status_type = "error"
     finally:
