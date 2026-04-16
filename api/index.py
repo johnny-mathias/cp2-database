@@ -1,14 +1,11 @@
-from flask import Flask, redirect, render_template_string, request, url_for
+from flask import Flask, redirect, render_template, request, url_for
 import oracledb
 import os
 
-app = Flask(__name__)
-
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-INDEX_PATH = os.path.join(BASE_DIR, "index.html")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 
-with open(INDEX_PATH, encoding="utf-8") as template_file:
-    HTML = template_file.read()
+app = Flask(__name__, template_folder=TEMPLATES_DIR)
 
 
 def get_conn():
@@ -78,8 +75,8 @@ def index():
     status_type = request.args.get("status_type", "")
     stats, inscricoes, logs = fetch_dashboard_data()
 
-    return render_template_string(
-        HTML,
+    return render_template(
+        "index.html",
         stats=stats,
         inscricoes=inscricoes,
         logs=logs,
