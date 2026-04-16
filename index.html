@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Global Cyber Summit</title>
+
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --panel: #ffffff;
+        --border: #d9e1ec;
+        --text: #16324f;
+        --muted: #5f7288;
+        --primary: #0d6efd;
+        --primary-dark: #0a58ca;
+        --danger: #cf2f4a;
+        --danger-dark: #a81f38;
+        --success-bg: #e8f7ee;
+        --success-text: #17653b;
+        --error-bg: #fdecee;
+        --error-text: #8d2230;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        background: linear-gradient(180deg, #eef4fb 0%, #f8fafc 100%);
+        color: var(--text);
+      }
+
+      .container {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 32px 20px 40px;
+      }
+
+      .hero,
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: 0 10px 30px rgba(16, 42, 67, 0.08);
+      }
+
+      .hero {
+        padding: 28px;
+        margin-bottom: 24px;
+      }
+
+      h1,
+      h2 {
+        margin-top: 0;
+      }
+
+      .subtitle {
+        color: var(--muted);
+        line-height: 1.5;
+        max-width: 760px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+      }
+
+      button {
+        border: none;
+        border-radius: 10px;
+        padding: 12px 18px;
+        font-size: 15px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+
+      .primary {
+        background: var(--primary);
+        color: #fff;
+      }
+
+      .primary:hover {
+        background: var(--primary-dark);
+      }
+
+      .danger {
+        background: var(--danger);
+        color: #fff;
+      }
+
+      .danger:hover {
+        background: var(--danger-dark);
+      }
+
+      .status {
+        margin-bottom: 18px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        font-weight: bold;
+      }
+
+      .status.success {
+        background: var(--success-bg);
+        color: var(--success-text);
+      }
+
+      .status.error {
+        background: var(--error-bg);
+        color: var(--error-text);
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+        margin-bottom: 24px;
+      }
+
+      .stat-box {
+        padding: 18px;
+      }
+
+      .stat-label {
+        color: var(--muted);
+        font-size: 14px;
+        margin-bottom: 8px;
+      }
+
+      .stat-value {
+        font-size: 32px;
+        font-weight: bold;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 24px;
+      }
+
+      .card {
+        padding: 22px;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 12px 10px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 13px;
+        text-transform: uppercase;
+      }
+
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: bold;
+      }
+
+      .badge.pending {
+        background: #fff3cd;
+        color: #8a6d1d;
+      }
+
+      .badge.cancelled {
+        background: #fde2e7;
+        color: #9b1c31;
+      }
+
+      .badge.confirmed {
+        background: #e5f7ec;
+        color: #17653b;
+      }
+
+      .trust-low {
+        color: #b42318;
+        font-weight: bold;
+      }
+
+      .log-item {
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .log-item:last-child {
+        border-bottom: none;
+      }
+
+      .log-title {
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+
+      .log-date {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .empty {
+        color: var(--muted);
+        margin: 0;
+      }
+
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="container">
+      <section class="hero">
+        <h1>Global Cyber Summit</h1>
+        <p class="subtitle">
+          Painel simples para acionar a varredura anti-fraude em inscricoes
+          pendentes. O backend executa PL/SQL no Oracle com cursor explicito,
+          cancelando registros suspeitos, reduzindo o trust score e gravando a
+          auditoria.
+        </p>
+
+        <div class="actions">
+          <form action="/processar" method="post">
+            <button type="submit" class="primary">Executar varredura</button>
+          </form>
+          <form action="/resetar" method="post">
+            <button type="submit" class="danger">Resetar demonstracao</button>
+          </form>
+        </div>
+      </section>
+
+      {% if status_message %}
+      <div class="status {{ status_type }}">{{ status_message }}</div>
+      {% endif %}
+
+      <section class="stats">
+        <div class="card stat-box">
+          <div class="stat-label">Total de inscricoes</div>
+          <div class="stat-value">{{ stats.total }}</div>
+        </div>
+        <div class="card stat-box">
+          <div class="stat-label">Pendentes</div>
+          <div class="stat-value">{{ stats.pendentes }}</div>
+        </div>
+        <div class="card stat-box">
+          <div class="stat-label">Canceladas</div>
+          <div class="stat-value">{{ stats.canceladas }}</div>
+        </div>
+        <div class="card stat-box">
+          <div class="stat-label">Confirmadas</div>
+          <div class="stat-value">{{ stats.confirmadas }}</div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Inscricoes monitoradas</h2>
+          <div class="table-wrap">
+            <table>
+              <tr>
+                <th>ID</th>
+                <th>Participante</th>
+                <th>Email</th>
+                <th>Prioridade</th>
+                <th>Trust Score</th>
+                <th>Status</th>
+                <th>Pagamento</th>
+                <th>Tipo</th>
+              </tr>
+
+              {% for item in inscricoes %}
+              <tr>
+                <td>{{ item[0] }}</td>
+                <td>{{ item[1] }}</td>
+                <td>{{ item[2] }}</td>
+                <td>{{ item[3] }}</td>
+                <td class="{% if item[4] < 100 %}trust-low{% endif %}">
+                  {{ item[4] }}
+                </td>
+                <td>
+                  <span class="badge {{ item[5]|lower }}">{{ item[5] }}</span>
+                </td>
+                <td>R$ {{ "%.2f"|format(item[6]) }}</td>
+                <td>{{ item[7] }}</td>
+              </tr>
+              {% endfor %}
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Log de auditoria</h2>
+
+          {% if logs %}
+            {% for log in logs %}
+            <div class="log-item">
+              <div class="log-title">Inscricao #{{ log[1] }}</div>
+              <div>{{ log[2] }}</div>
+              <div class="log-date">{{ log[3] }}</div>
+            </div>
+            {% endfor %}
+          {% else %}
+          <p class="empty">Nenhum evento de auditoria registrado ate o momento.</p>
+          {% endif %}
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

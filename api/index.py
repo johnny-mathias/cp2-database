@@ -1,245 +1,227 @@
-import os
-from contextlib import contextmanager
-from pathlib import Path
-from typing import Any
-
+from flask import Flask, redirect, render_template_string, request, url_for
 import oracledb
-from flask import Flask, flash, redirect, render_template, url_for
+import os
+
+app = Flask(__name__)
+
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+INDEX_PATH = os.path.join(BASE_DIR, "index.html")
+
+with open(INDEX_PATH, encoding="utf-8") as template_file:
+    HTML = template_file.read()
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-TEMPLATES_DIR = BASE_DIR / "templates"
-STATIC_DIR = BASE_DIR / "static"
-
-SELECT_PARTICIPANTS_SQL = """
-SELECT
-    u.nome,
-    u.email,
-    u.trust_score,
-    i.status
-FROM USUARIOS u
-JOIN INSCRICOES i ON u.id = i.usuario_id
-ORDER BY u.id, i.id
-"""
-
-SELECT_AUDIT_LOGS_SQL = """
-SELECT
-    id,
-    inscricao_id,
-    motivo,
-    data
-FROM LOG_AUDITORIA
-ORDER BY data DESC, id DESC
-"""
-
-FRAUD_SCAN_PLSQL = r"""
-DECLARE
-    CURSOR c_inscricoes IS
-        SELECT i.id, i.usuario_id, u.email
-        FROM INSCRICOES i
-        JOIN USUARIOS u ON u.id = i.usuario_id
-        WHERE i.status = 'PENDING';
-
-    v_id_inscricao INSCRICOES.ID%TYPE;
-    v_usuario_id   USUARIOS.ID%TYPE;
-    v_email        USUARIOS.EMAIL%TYPE;
-    v_count NUMBER := 0;
-BEGIN
-    OPEN c_inscricoes;
-
-    LOOP
-        FETCH c_inscricoes INTO v_id_inscricao, v_usuario_id, v_email;
-        EXIT WHEN c_inscricoes%NOTFOUND;
-
-        IF v_email LIKE '%@fake.com'
-           OR v_email LIKE '%@temp-mail%'
-           OR NOT REGEXP_LIKE(v_email, '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
-        THEN
-            UPDATE INSCRICOES
-            SET STATUS = 'CANCELLED'
-            WHERE ID = v_id_inscricao;
-
-            UPDATE USUARIOS
-            SET TRUST_SCORE = TRUST_SCORE - 15
-            WHERE ID = v_usuario_id;
-
-            INSERT INTO LOG_AUDITORIA (ID, INSCRICAO_ID, MOTIVO, DATA)
-            VALUES (
-                LOG_AUDITORIA_SEQ.NEXTVAL,
-                v_id_inscricao,
-                'Bot detectado - Email suspeito: ' || v_email,
-                SYSDATE
-            );
-
-            v_count := v_count + 1;
-        END IF;
-    END LOOP;
-
-    CLOSE c_inscricoes;
-    COMMIT;
-
-    DBMS_OUTPUT.PUT_LINE('Total de inscricoes canceladas: ' || v_count);
-EXCEPTION
-    WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('Erro: ' || SQLERRM);
-END;
-"""
-
-app = Flask(
-    __name__,
-    template_folder=str(TEMPLATES_DIR),
-    static_folder=str(STATIC_DIR),
-)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "global-cyber-summit")
-
-
-def oracle_config() -> dict[str, Any]:
-    user = os.getenv("DB_USER") or os.getenv("ORACLE_USER")
-    password = os.getenv("DB_PASSWORD") or os.getenv("ORACLE_PASSWORD")
-    dsn = os.getenv("DB_DSN") or os.getenv("ORACLE_DSN")
-
-    if dsn:
-        if not user or not password:
-            raise RuntimeError(
-                "Defina DB_USER/DB_PASSWORD com DB_DSN para conectar ao Oracle."
-            )
-        return {"user": user, "password": password, "dsn": dsn}
-
-    host = os.getenv("ORACLE_HOST")
-    port = os.getenv("ORACLE_PORT", "1521")
-    sid = os.getenv("ORACLE_SID")
-    service_name = os.getenv("ORACLE_SERVICE_NAME")
-
-    if user and password and host and (sid or service_name):
-        connect_data: dict[str, Any] = {"host": host, "port": int(port)}
-        if service_name:
-            connect_data["service_name"] = service_name
-        else:
-            connect_data["sid"] = sid
-
-        return {
-            "user": user,
-            "password": password,
-            "dsn": oracledb.makedsn(**connect_data),
-        }
-
-    raise RuntimeError(
-        "Configuracao Oracle ausente. Use DB_USER, DB_PASSWORD e DB_DSN "
-        "ou ORACLE_USER, ORACLE_PASSWORD, ORACLE_HOST, ORACLE_PORT e "
-        "ORACLE_SERVICE_NAME/ORACLE_SID."
+def get_conn():
+    return oracledb.connect(
+        user=os.environ["DB_USER"],
+        password=os.environ["DB_PASSWORD"],
+        dsn=os.environ["DB_DSN"],
     )
 
 
-@contextmanager
-def get_connection():
-    connection = oracledb.connect(**oracle_config())
-    try:
-        yield connection
-    finally:
-        connection.close()
+def fetch_dashboard_data():
+    conn = get_conn()
+    cur = conn.cursor()
 
-
-def fetch_rows(cursor: oracledb.Cursor) -> list[dict[str, Any]]:
-    columns = [item[0].lower() for item in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
-
-
-def load_dashboard_data() -> dict[str, Any]:
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            try:
-                cursor.execute(SELECT_PARTICIPANTS_SQL)
-                participants = fetch_rows(cursor)
-
-                cursor.execute(SELECT_AUDIT_LOGS_SQL)
-                audit_logs = fetch_rows(cursor)
-            except oracledb.DatabaseError as exc:
-                error, = exc.args
-                raise RuntimeError(
-                    f"Erro Oracle ao carregar dashboard: {error.code} - {error.message}"
-                ) from exc
-
-    pending = [row for row in participants if row["status"] == "PENDING"]
-    cancelled = [row for row in participants if row["status"] == "CANCELLED"]
-    for row in audit_logs:
-        event_date = row.get("data")
-        row["data_evento"] = (
-            event_date.strftime("%d/%m/%Y %H:%M:%S") if event_date else ""
-        )
-
-    return {
-        "participants": participants,
-        "pending": pending,
-        "audit_logs": audit_logs,
-        "load_error": None,
-        "stats": {
-            "total_participants": len(participants),
-            "total_pending": len(pending),
-            "cancelled_count": len(cancelled),
-            "audit_count": len(audit_logs),
-        },
+    cur.execute(
+        """
+        SELECT
+            COUNT(*) AS total_inscricoes,
+            SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pendentes,
+            SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) AS canceladas,
+            SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) AS confirmadas
+        FROM INSCRICOES
+        """
+    )
+    stats_row = cur.fetchone()
+    stats = {
+        "total": stats_row[0] or 0,
+        "pendentes": stats_row[1] or 0,
+        "canceladas": stats_row[2] or 0,
+        "confirmadas": stats_row[3] or 0,
     }
 
+    cur.execute(
+        """
+        SELECT
+            i.id,
+            u.nome,
+            u.email,
+            u.prioridade,
+            u.trust_score,
+            i.status,
+            i.valor_pago,
+            i.tipo
+        FROM INSCRICOES i
+        JOIN USUARIOS u ON u.id = i.usuario_id
+        ORDER BY i.id
+        """
+    )
+    inscricoes = cur.fetchall()
 
-def run_fraud_scan() -> tuple[int, str]:
-    before = load_dashboard_data()
-    cancelled_before = before["stats"]["cancelled_count"]
+    cur.execute(
+        """
+        SELECT id, inscricao_id, motivo, TO_CHAR(data, 'DD/MM/YYYY HH24:MI:SS')
+        FROM LOG_AUDITORIA
+        ORDER BY id DESC
+        """
+    )
+    logs = cur.fetchall()
 
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            try:
-                cursor.execute(FRAUD_SCAN_PLSQL)
-                connection.commit()
-            except oracledb.DatabaseError as exc:
-                connection.rollback()
-                error, = exc.args
-                raise RuntimeError(
-                    f"Erro Oracle ao executar a varredura: {error.code} - {error.message}"
-                ) from exc
-
-    after = load_dashboard_data()
-    cancelled_after = after["stats"]["cancelled_count"]
-    processed = max(cancelled_after - cancelled_before, 0)
-    return processed, "Varredura executada com sucesso usando PL/SQL embutido no Python."
+    conn.close()
+    return stats, inscricoes, logs
 
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def index():
+    status_message = request.args.get("status_message", "")
+    status_type = request.args.get("status_type", "")
+    stats, inscricoes, logs = fetch_dashboard_data()
+
+    return render_template_string(
+        HTML,
+        stats=stats,
+        inscricoes=inscricoes,
+        logs=logs,
+        status_message=status_message,
+        status_type=status_type,
+    )
+
+
+@app.route("/processar", methods=["POST"])
+def processar():
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cancelled_var = cur.var(oracledb.NUMBER)
+    penalized_var = cur.var(oracledb.NUMBER)
+    logs_var = cur.var(oracledb.NUMBER)
+
     try:
-        dashboard = load_dashboard_data()
-    except RuntimeError as exc:
-        flash(str(exc), "error")
-        dashboard = {
-            "participants": [],
-            "pending": [],
-            "audit_logs": [],
-            "load_error": str(exc),
-            "stats": {
-                "total_participants": "-",
-                "total_pending": "-",
-                "cancelled_count": "-",
-                "audit_count": "-",
-            },
-        }
+        cur.execute(
+            """
+            DECLARE
+                CURSOR c_inscricoes IS
+                    SELECT i.id, i.usuario_id, u.email
+                    FROM INSCRICOES i
+                    JOIN USUARIOS u ON u.id = i.usuario_id
+                    WHERE i.status = 'PENDING'
+                    FOR UPDATE OF i.status;
 
-    return render_template("dashboard.html", **dashboard)
+                v_id_inscricao INSCRICOES.ID%TYPE;
+                v_usuario_id USUARIOS.ID%TYPE;
+                v_email USUARIOS.EMAIL%TYPE;
+                v_canceladas NUMBER := 0;
+                v_penalizados NUMBER := 0;
+                v_logs NUMBER := 0;
+            BEGIN
+                OPEN c_inscricoes;
 
+                LOOP
+                    FETCH c_inscricoes INTO v_id_inscricao, v_usuario_id, v_email;
+                    EXIT WHEN c_inscricoes%NOTFOUND;
 
-@app.route("/scan", methods=["POST"])
-def scan():
-    try:
-        processed_count, message = run_fraud_scan()
-        flash(
-            f"{message} Cancelamentos detectados nesta execucao: {processed_count}.",
-            "success",
+                    IF v_email LIKE '%@fake.com'
+                       OR v_email LIKE '%@temp-mail%'
+                       OR NOT REGEXP_LIKE(
+                           v_email,
+                           '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'
+                       )
+                    THEN
+                        UPDATE INSCRICOES
+                        SET STATUS = 'CANCELLED'
+                        WHERE CURRENT OF c_inscricoes;
+
+                        UPDATE USUARIOS
+                        SET TRUST_SCORE = GREATEST(TRUST_SCORE - 15, 0)
+                        WHERE ID = v_usuario_id;
+
+                        INSERT INTO LOG_AUDITORIA (ID, INSCRICAO_ID, MOTIVO, DATA)
+                        VALUES (
+                            LOG_AUDITORIA_SEQ.NEXTVAL,
+                            v_id_inscricao,
+                            'Inscricao cancelada por email suspeito: ' || v_email,
+                            SYSDATE
+                        );
+
+                        v_canceladas := v_canceladas + 1;
+                        v_penalizados := v_penalizados + 1;
+                        v_logs := v_logs + 1;
+                    END IF;
+                END LOOP;
+
+                CLOSE c_inscricoes;
+
+                :canceladas := v_canceladas;
+                :penalizados := v_penalizados;
+                :logs := v_logs;
+            EXCEPTION
+                WHEN OTHERS THEN
+                    IF c_inscricoes%ISOPEN THEN
+                        CLOSE c_inscricoes;
+                    END IF;
+                    RAISE;
+            END;
+            """,
+            canceladas=cancelled_var,
+            penalizados=penalized_var,
+            logs=logs_var,
         )
-    except RuntimeError as exc:
-        flash(str(exc), "error")
-    except Exception as exc:  # pragma: no cover
-        flash(f"Erro inesperado na aplicacao: {exc}", "error")
+        conn.commit()
 
-    return redirect(url_for("index"))
+        message = (
+            f"Varredura concluida: {int(cancelled_var.getvalue())} inscricoes canceladas, "
+            f"{int(penalized_var.getvalue())} usuarios penalizados e "
+            f"{int(logs_var.getvalue())} logs gerados."
+        )
+        status_type = "success"
+    except oracledb.DatabaseError as exc:
+        conn.rollback()
+        error, = exc.args
+        message = f"Erro Oracle {error.code}: {error.message}"
+        status_type = "error"
+    finally:
+        cur.close()
+        conn.close()
+
+    return redirect(url_for("index", status_message=message, status_type=status_type))
+
+
+@app.route("/resetar", methods=["POST"])
+def resetar():
+    conn = get_conn()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            """
+            BEGIN
+                DELETE FROM LOG_AUDITORIA;
+
+                UPDATE USUARIOS
+                SET TRUST_SCORE = 100;
+
+                UPDATE INSCRICOES i
+                SET STATUS = CASE
+                    WHEN i.status = 'CONFIRMED' THEN 'CONFIRMED'
+                    ELSE 'PENDING'
+                END;
+            END;
+            """
+        )
+        conn.commit()
+        message = "Base restaurada para um estado simples de demonstracao."
+        status_type = "success"
+    except oracledb.DatabaseError as exc:
+        conn.rollback()
+        error, = exc.args
+        message = f"Erro Oracle {error.code}: {error.message}"
+        status_type = "error"
+    finally:
+        cur.close()
+        conn.close()
+
+    return redirect(url_for("index", status_message=message, status_type=status_type))
 
 
 app = app
