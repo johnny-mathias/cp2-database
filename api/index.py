@@ -1,9 +1,11 @@
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Flask, jsonify, redirect, render_template_string, request, url_for
 import oracledb
 import os
 
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=TEMPLATES_DIR)
 
 HTML = """ 
 <!doctype html>
