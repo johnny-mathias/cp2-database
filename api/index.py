@@ -2,10 +2,76 @@ from flask import Flask, jsonify, redirect, render_template, request, url_for
 import oracledb
 import os
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 
-app = Flask(__name__, template_folder=TEMPLATES_DIR)
+app = Flask(__name__)
+
+HTML = """ 
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Global Cyber Summit</title>
+
+  <style>
+    body { font-family: Arial; background: #f4f7fb; }
+    .container { max-width: 1000px; margin: auto; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px; border-bottom: 1px solid #ccc; }
+    .btn { padding: 10px 15px; border: none; cursor: pointer; }
+    .primary { background: #0d6efd; color: white; }
+    .danger { background: #cf2f4a; color: white; }
+    .status { margin: 10px 0; font-weight: bold; }
+  </style>
+</head>
+
+<body>
+<div class="container">
+  <h1>Global Cyber Summit</h1>
+
+  <form action="/processar" method="post">
+    <button class="btn primary">Executar varredura</button>
+  </form>
+
+  <form action="/resetar" method="post">
+    <button class="btn danger">Resetar</button>
+  </form>
+
+  {% if status_message %}
+    <div class="status">{{ status_message }}</div>
+  {% endif %}
+
+  <h2>Estatisticas</h2>
+  <p>Total: {{ data.stats.total }}</p>
+  <p>Pendentes: {{ data.stats.pendentes }}</p>
+  <p>Canceladas: {{ data.stats.canceladas }}</p>
+  <p>Confirmadas: {{ data.stats.confirmadas }}</p>
+
+  <h2>Inscricoes</h2>
+  <table>
+    <tr>
+      <th>ID</th><th>Nome</th><th>Email</th>
+      <th>Trust</th><th>Status</th>
+    </tr>
+    {% for i in data.inscricoes %}
+    <tr>
+      <td>{{ i.id }}</td>
+      <td>{{ i.nome }}</td>
+      <td>{{ i.email }}</td>
+      <td>{{ i.trust_score }}</td>
+      <td>{{ i.status }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <h2>Logs</h2>
+  {% for log in data.logs %}
+    <p>#{{ log.inscricao_id }} - {{ log.motivo }}</p>
+  {% endfor %}
+
+</div>
+</body>
+</html>
+"""
 
 
 def get_conn():
@@ -123,12 +189,12 @@ def index():
         f"{len(inscricoes)} inscricoes e {len(logs)} logs."
     )
 
-    return render_template(
-        "index.html",
-        initial_data=serialize_dashboard_data(stats, inscricoes, logs),
+    return render_template_string(
+        HTML,
+        data=serialize_dashboard_data(stats, inscricoes, logs),
         status_message=status_message,
         status_type=status_type,
-    )
+)
 
 
 @app.route("/dados")
