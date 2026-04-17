@@ -147,11 +147,10 @@ def dados():
 def processar():
     conn = get_conn()
     cur = conn.cursor()
-    print("[DEBUG] Rota '/processar' acionada.")
 
-    cancelled_var = cur.var(oracledb.NUMBER)
-    penalized_var = cur.var(oracledb.NUMBER)
-    logs_var = cur.var(oracledb.NUMBER)
+    cancelled = cur.var(oracledb.NUMBER)
+    penalized = cur.var(oracledb.NUMBER)
+    logs = cur.var(oracledb.NUMBER)
 
     try:
         cur.execute(
@@ -211,38 +210,28 @@ def processar():
                 :canceladas := v_canceladas;
                 :penalizados := v_penalizados;
                 :logs := v_logs;
-            EXCEPTION
-                WHEN OTHERS THEN
-                    IF c_inscricoes%ISOPEN THEN
-                        CLOSE c_inscricoes;
-                    END IF;
-                    RAISE;
             END;
             """,
-            canceladas=cancelled_var,
-            penalizados=penalized_var,
-            logs=logs_var,
-        )
-        conn.commit()
-        print(
-            "[DEBUG] Varredura concluida com "
-            f"{int(cancelled_var.getvalue())} cancelamentos, "
-            f"{int(penalized_var.getvalue())} penalizacoes e "
-            f"{int(logs_var.getvalue())} logs."
+            canceladas=cancelled,
+            penalizados=penalized,
+            logs=logs,
         )
 
+        conn.commit()
+
         message = (
-            f"Varredura concluida: {int(cancelled_var.getvalue())} inscricoes canceladas, "
-            f"{int(penalized_var.getvalue())} usuarios penalizados e "
-            f"{int(logs_var.getvalue())} logs gerados."
+            f"{int(cancelled.getvalue())} canceladas | "
+            f"{int(penalized.getvalue())} penalizados | "
+            f"{int(logs.getvalue())} logs"
         )
         status_type = "success"
-    except oracledb.DatabaseError as exc:
+
+    except oracledb.DatabaseError as e:
         conn.rollback()
-        error, = exc.args
-        print(f"[DEBUG] Erro Oracle em /processar: {error.code} - {error.message}")
-        message = f"Erro Oracle {error.code}: {error.message}"
+        error, = e.args
+        message = f"Erro {error.code}"
         status_type = "error"
+
     finally:
         cur.close()
         conn.close()
