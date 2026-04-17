@@ -257,19 +257,19 @@
       <section class="stats">
         <div class="card stat-box">
           <div class="stat-label">Total de inscricoes</div>
-          <div class="stat-value">{{ stats.total }}</div>
+          <div class="stat-value" id="stat-total">{{ initial_data.stats.total }}</div>
         </div>
         <div class="card stat-box">
           <div class="stat-label">Pendentes</div>
-          <div class="stat-value">{{ stats.pendentes }}</div>
+          <div class="stat-value" id="stat-pendentes">{{ initial_data.stats.pendentes }}</div>
         </div>
         <div class="card stat-box">
           <div class="stat-label">Canceladas</div>
-          <div class="stat-value">{{ stats.canceladas }}</div>
+          <div class="stat-value" id="stat-canceladas">{{ initial_data.stats.canceladas }}</div>
         </div>
         <div class="card stat-box">
           <div class="stat-label">Confirmadas</div>
-          <div class="stat-value">{{ stats.confirmadas }}</div>
+          <div class="stat-value" id="stat-confirmadas">{{ initial_data.stats.confirmadas }}</div>
         </div>
       </section>
 
@@ -278,57 +278,132 @@
           <h2>Inscricoes monitoradas</h2>
           <div class="table-wrap">
             <table>
-              <tr>
-                <th>ID</th>
-                <th>Participante</th>
-                <th>Email</th>
-                <th>Prioridade</th>
-                <th>Trust Score</th>
-                <th>Status</th>
-                <th>Pagamento</th>
-                <th>Tipo</th>
-              </tr>
-
-              {% for item in inscricoes %}
-              <tr>
-                <td>{{ item[0] }}</td>
-                <td>{{ item[1] }}</td>
-                <td>{{ item[2] }}</td>
-                <td>{{ item[3] }}</td>
-                <td class="{% if item[4] < 100 %}trust-low{% endif %}">
-                  {{ item[4] }}
-                </td>
-                <td>
-                  <span class="badge {{ item[5]|lower }}">{{ item[5] }}</span>
-                </td>
-                <td>R$ {{ "%.2f"|format(item[6]) }}</td>
-                <td>{{ item[7] }}</td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="8">Nenhuma inscricao encontrada.</td>
-              </tr>
-              {% endfor %}
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Participante</th>
+                  <th>Email</th>
+                  <th>Prioridade</th>
+                  <th>Trust Score</th>
+                  <th>Status</th>
+                  <th>Pagamento</th>
+                  <th>Tipo</th>
+                </tr>
+              </thead>
+              <tbody id="inscricoes-body"></tbody>
             </table>
           </div>
         </div>
 
         <div class="card">
           <h2>Log de auditoria</h2>
-
-          {% if logs %}
-          {% for log in logs %}
-          <div class="log-item">
-            <div class="log-title">Inscricao #{{ log[1] }}</div>
-            <div>{{ log[2] }}</div>
-            <div class="log-date">{{ log[3] }}</div>
-          </div>
-          {% endfor %}
-          {% else %}
-          <p class="empty">Nenhum evento de auditoria registrado ate o momento.</p>
-          {% endif %}
+          <div id="logs-list"></div>
         </div>
       </section>
     </main>
+
+    <script>
+      const initialData = JSON.parse('{{ initial_data | tojson | safe }}');
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function formatCurrency(value) {
+        return Number(value || 0).toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        });
+      }
+
+      function updateStats(stats) {
+        document.getElementById("stat-total").textContent = stats.total ?? 0;
+        document.getElementById("stat-pendentes").textContent = stats.pendentes ?? 0;
+        document.getElementById("stat-canceladas").textContent = stats.canceladas ?? 0;
+        document.getElementById("stat-confirmadas").textContent = stats.confirmadas ?? 0;
+      }
+
+      function renderInscricoes(inscricoes) {
+        const tbody = document.getElementById("inscricoes-body");
+
+        if (!inscricoes.length) {
+          tbody.innerHTML = '<tr><td colspan="8">Nenhuma inscricao encontrada.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = inscricoes
+          .map((item) => {
+            const trustClass = item.trust_score < 100 ? "trust-low" : "";
+            const statusClass = String(item.status || "").toLowerCase();
+
+            return `
+              <tr>
+                <td>${escapeHtml(item.id)}</td>
+                <td>${escapeHtml(item.nome)}</td>
+                <td>${escapeHtml(item.email)}</td>
+                <td>${escapeHtml(item.prioridade)}</td>
+                <td class="${trustClass}">${escapeHtml(item.trust_score)}</td>
+                <td><span class="badge ${escapeHtml(statusClass)}">${escapeHtml(item.status)}</span></td>
+                <td>${formatCurrency(item.valor_pago)}</td>
+                <td>${escapeHtml(item.tipo)}</td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+
+      function renderLogs(logs) {
+        const container = document.getElementById("logs-list");
+
+        if (!logs.length) {
+          container.innerHTML =
+            '<p class="empty">Nenhum evento de auditoria registrado ate o momento.</p>';
+          return;
+        }
+
+        container.innerHTML = logs
+          .map(
+            (log) => `
+              <div class="log-item">
+                <div class="log-title">Inscricao #${escapeHtml(log.inscricao_id)}</div>
+                <div>${escapeHtml(log.motivo)}</div>
+                <div class="log-date">${escapeHtml(log.data)}</div>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      async function carregarDashboard() {
+        try {
+          const resposta = await fetch("/dados", {
+            headers: { Accept: "application/json" },
+          });
+
+          if (!resposta.ok) {
+            throw new Error(`Falha ao carregar dados: ${resposta.status}`);
+          }
+
+          const dados = await resposta.json();
+          updateStats(dados.stats || {});
+          renderInscricoes(dados.inscricoes || []);
+          renderLogs(dados.logs || []);
+        } catch (erro) {
+          console.error(erro);
+          renderInscricoes(initialData.inscricoes || []);
+          renderLogs(initialData.logs || []);
+        }
+      }
+
+      updateStats(initialData.stats || {});
+      renderInscricoes(initialData.inscricoes || []);
+      renderLogs(initialData.logs || []);
+      carregarDashboard();
+    </script>
   </body>
 </html>

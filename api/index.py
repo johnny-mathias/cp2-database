@@ -1,4 +1,4 @@
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, jsonify, redirect, render_template, request, url_for
 import oracledb
 import os
 
@@ -84,6 +84,34 @@ def fetch_dashboard_data():
     return stats, inscricoes, logs
 
 
+def serialize_dashboard_data(stats, inscricoes, logs):
+    return {
+        "stats": stats,
+        "inscricoes": [
+            {
+                "id": item[0],
+                "nome": item[1],
+                "email": item[2],
+                "prioridade": item[3],
+                "trust_score": item[4],
+                "status": item[5],
+                "valor_pago": float(item[6]) if item[6] is not None else 0.0,
+                "tipo": item[7],
+            }
+            for item in inscricoes
+        ],
+        "logs": [
+            {
+                "id": log[0],
+                "inscricao_id": log[1],
+                "motivo": log[2],
+                "data": log[3],
+            }
+            for log in logs
+        ],
+    }
+
+
 @app.route("/")
 def index():
     status_message = request.args.get("status_message", "")
@@ -97,12 +125,22 @@ def index():
 
     return render_template(
         "index.html",
-        stats=stats,
-        inscricoes=inscricoes,
-        logs=logs,
+        initial_data=serialize_dashboard_data(stats, inscricoes, logs),
         status_message=status_message,
         status_type=status_type,
     )
+
+
+@app.route("/dados")
+def dados():
+    print("[DEBUG] Rota '/dados' acionada.")
+    stats, inscricoes, logs = fetch_dashboard_data()
+    payload = serialize_dashboard_data(stats, inscricoes, logs)
+    print(
+        "[DEBUG] Retornando JSON com "
+        f"{len(payload['inscricoes'])} inscricoes e {len(payload['logs'])} logs."
+    )
+    return jsonify(payload)
 
 
 @app.route("/processar", methods=["POST"])
