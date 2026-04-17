@@ -211,6 +211,8 @@ def dados():
     return jsonify(payload)
 
 
+
+
 @app.route("/processar", methods=["POST"])
 def processar():
     conn = get_conn()
@@ -284,6 +286,10 @@ def processar():
             penalizados=penalized,
             logs=logs,
         )
+        cur.execute("""
+        SELECT COUNT(*) FROM INSCRICOES
+        """)
+        print("[DEBUG] COUNT INSCRICOES:", cur.fetchone())
 
         conn.commit()
 
